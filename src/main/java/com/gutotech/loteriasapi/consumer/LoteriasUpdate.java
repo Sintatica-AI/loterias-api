@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.CacheManager;
@@ -18,74 +19,76 @@ import com.gutotech.loteriasapi.service.ResultadoService;
 @Component
 public class LoteriasUpdate {
 
-    @Autowired
-    private LoteriaUpdateTask loteriaUpdateTask;
+  @Autowired
+  private LoteriaUpdateTask loteriaUpdateTask;
 
-    @Autowired
-    private CacheManager cacheManager;
+  @Autowired
+  private CacheManager cacheManager;
 
-    public void checkForUpdates() throws Exception {
-	for (Loteria loteria : Loteria.values()) {
-	    loteriaUpdateTask.checkForUpdates(loteria.toString());
-	}
-
-	cacheManager.getCache("resultados").clear();
+  public void checkForUpdates() throws Exception {
+    for (Loteria loteria : Loteria.values()) {
+      loteriaUpdateTask.checkForUpdates(loteria.toString());
     }
 
-    @Component
-    @EnableAsync
-    class LoteriaUpdateTask {
-	@Autowired
-	private Consumer consumer;
+    cacheManager.getCache("resultados").clear();
+  }
 
-	@Autowired
-	private ResultadoService resultadoService;
+  @Component
+  @EnableAsync
+  class LoteriaUpdateTask {
+    @Autowired
+    private Consumer consumer;
 
-	@Async
-	public void checkForUpdates(final String loteria) throws Exception {
-	    Resultado latestResultado = consumer.getResultado(loteria, null);
+    @Autowired
+    private ResultadoService resultadoService;
 
-	    Resultado myLatestResultado = resultadoService.findLatest(loteria);
+    @Async
+    public void checkForUpdates(final String loteria) throws Exception {
+      Resultado latestResultado = consumer.getResultado(loteria, null);
 
-	    if (myLatestResultado.getConcurso() == latestResultado.getConcurso()) {
-		myLatestResultado.setData(latestResultado.getData());
-		myLatestResultado.setLocal(latestResultado.getLocal());
+      Resultado myLatestResultado = resultadoService.findLatest(loteria);
 
-		myLatestResultado.setPremiacoes(latestResultado.getPremiacoes());
-		myLatestResultado.setEstadosPremiados(latestResultado.getEstadosPremiados());
-		myLatestResultado.setAcumulou(latestResultado.isAcumulou());
-		myLatestResultado.setDataProximoConcurso(latestResultado.getDataProximoConcurso());
+      if (myLatestResultado.getConcurso() == latestResultado.getConcurso()) {
+        myLatestResultado.setData(latestResultado.getData());
+        myLatestResultado.setLocal(latestResultado.getLocal());
 
-		resultadoService.save(myLatestResultado);
-	    } else if (myLatestResultado.getConcurso() < latestResultado.getConcurso()) {
-		System.out.println("COMECANDO " + loteria);
+        myLatestResultado.setPremiacoes(latestResultado.getPremiacoes());
+        // myLatestResultado.setEstadosPremiados(latestResultado.getEstadosPremiados());
+        myLatestResultado.setAcumulou(latestResultado.isAcumulou());
+        myLatestResultado.setDataProximoConcurso(latestResultado.getDataProximoConcurso());
 
-		Map<String, Integer> tentativasMap = new HashMap<>();
+        resultadoService.save(myLatestResultado);
+      } else if (myLatestResultado.getConcurso() < latestResultado.getConcurso()) {
+        System.out.println("COMECANDO " + loteria);
 
-		for (int concurso = myLatestResultado.getConcurso() + 1; concurso <= latestResultado
-			.getConcurso(); concurso++) {
-		    try {
-			Resultado resultado = consumer.getResultado(loteria,
-				String.valueOf(concurso));
-			resultadoService.save(resultado);
-		    } catch (Exception e) {
-			int total = tentativasMap.getOrDefault(loteria + "-" + concurso, 0);
+        Map<String, Integer> tentativasMap = new HashMap<>();
 
-			if (total < 20) {
-			    tentativasMap.put(loteria + "-" + concurso, ++total);
-			    --concurso;
+        for (int concurso = myLatestResultado.getConcurso() + 1; concurso <= latestResultado
+            .getConcurso(); concurso++) {
+          try {
+            TimeUnit.SECONDS.sleep(3);
+            System.out.println("BUSCANDO " + loteria + " " + concurso);
+            Resultado resultado = consumer.getResultado(loteria,
+                String.valueOf(concurso));
+            resultadoService.save(resultado);
+          } catch (Exception e) {
+            int total = tentativasMap.getOrDefault(loteria + "-" + concurso, 0);
 
-			    System.out.printf("ERRO: (%s, %d) - %s %s \n", loteria, concurso,
-				    e.getClass(), e.getMessage());
-			} else {
-			    System.out.printf("PARANDO DE BUSCAR (%s, %d)\n", loteria, concurso);
-			}
-		    }
-		}
+            if (total < 20) {
+              tentativasMap.put(loteria + "-" + concurso, ++total);
+              --concurso;
 
-		System.out.println("TERMINANDO " + loteria);
-	    }
-	}
+              System.out.printf("ERRO: (%s, %d) - %s %s \n", loteria, concurso,
+                  e.getClass(), e.getMessage());
+            } else {
+              System.out.printf("PARANDO DE BUSCAR (%s, %d)\n", loteria, concurso);
+            }
+          }
+        }
+
+        System.out.println("TERMINANDO " + loteria);
+      }
     }
+  }
 
 }
