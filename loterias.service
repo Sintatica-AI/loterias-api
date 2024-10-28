@@ -1,0 +1,10 @@
+[Unit]
+Description=Start API Loterias
+
+[Service]
+ExecStart=sh /home/ubuntu/workspace/loterias-api/run.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
