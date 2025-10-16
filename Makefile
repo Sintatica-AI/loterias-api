@@ -20,3 +20,8 @@ serv-enable:
 serv-logs:
 	journalctl -u loterias.service --follow
 
+serv-stop:
+	sudo systemctl stop loterias.service
+
+serv-logs-size:
+	sudo journalctl -u loterias.service --vacuum-size=100M
